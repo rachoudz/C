@@ -11,6 +11,7 @@ public class InvoiceForm : Form
     private readonly InvoiceRepository _invoiceRepository;
     private readonly InvoiceCalculator _calculator = new();
     private readonly InvoicePrintDocumentBuilder _printBuilder = new();
+    private readonly InvoicePdfExporter _pdfExporter = new();
     private readonly int? _invoiceId;
 
     private readonly TextBox _invoiceNumberTextBox = new() { Left = 20, Top = 20, Width = 180 };
@@ -27,7 +28,8 @@ public class InvoiceForm : Form
     private readonly Button _saveButton = new() { Left = 20, Top = 500, Width = 120, Height = 35, Text = "Save" };
     private readonly Button _recalculateButton = new() { Left = 150, Top = 500, Width = 120, Height = 35, Text = "Recalculate" };
     private readonly Button _addStorageRowButton = new() { Left = 280, Top = 500, Width = 150, Height = 35, Text = "Add Storage Line" };
-    private readonly Button _previewButton = new() { Left = 440, Top = 500, Width = 140, Height = 35, Text = "Preview / Export" };
+    private readonly Button _previewButton = new() { Left = 440, Top = 500, Width = 140, Height = 35, Text = "Preview TXT" };
+    private readonly Button _exportPdfButton = new() { Left = 590, Top = 500, Width = 140, Height = 35, Text = "Export PDF" };
 
     private List<Customer> _customers = new();
     private List<Product> _products = new();
@@ -69,7 +71,8 @@ public class InvoiceForm : Form
             _saveButton,
             _recalculateButton,
             _addStorageRowButton,
-            _previewButton
+            _previewButton,
+            _exportPdfButton
         });
 
         BuildGrid();
@@ -79,6 +82,7 @@ public class InvoiceForm : Form
         _saveButton.Click += (_, _) => SaveInvoice();
         _addStorageRowButton.Click += (_, _) => AddStorageRow();
         _previewButton.Click += (_, _) => PreviewInvoice();
+        _exportPdfButton.Click += (_, _) => ExportPdf();
         _dateInPicker.ValueChanged += (_, _) => Recalculate();
         _dateOutPicker.ValueChanged += (_, _) => Recalculate();
         _dailyRateInput.ValueChanged += (_, _) => Recalculate();
@@ -286,11 +290,8 @@ public class InvoiceForm : Form
     {
         try
         {
-            var invoice = BuildInvoiceFromForm();
-            invoice.StorageDays = StorageDaysCalculator.ComputeBillableDays(invoice.DateIn ?? DateTime.Today, invoice.DateOut ?? DateTime.Today);
-            _calculator.CalculateInvoiceTotals(invoice);
-
-            var customerName = _customers.FirstOrDefault(c => c.Id == invoice.CustomerId)?.Name ?? "Unknown customer";
+            var invoice = BuildPreparedInvoice();
+            var customerName = GetCustomerName(invoice.CustomerId);
             var previewText = _printBuilder.BuildPlainText(invoice, customerName);
 
             using var dialog = new SaveFileDialog
@@ -303,7 +304,7 @@ public class InvoiceForm : Form
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 File.WriteAllText(dialog.FileName, previewText);
-                MessageBox.Show(this, "Preview exported. PDF generation can be plugged in next.", "Export complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, "Text preview exported.", "Export complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
         catch (Exception ex)
@@ -312,13 +313,50 @@ public class InvoiceForm : Form
         }
     }
 
+    private void ExportPdf()
+    {
+        try
+        {
+            var invoice = BuildPreparedInvoice();
+            var customerName = GetCustomerName(invoice.CustomerId);
+
+            using var dialog = new SaveFileDialog
+            {
+                Title = "Export invoice PDF",
+                Filter = "PDF file (*.pdf)|*.pdf",
+                FileName = $"{invoice.InvoiceNumber}.pdf"
+            };
+
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                _pdfExporter.Export(dialog.FileName, invoice, customerName);
+                MessageBox.Show(this, "PDF exported.", "Export complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "PDF export failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private Invoice BuildPreparedInvoice()
+    {
+        var invoice = BuildInvoiceFromForm();
+        invoice.StorageDays = StorageDaysCalculator.ComputeBillableDays(invoice.DateIn ?? DateTime.Today, invoice.DateOut ?? DateTime.Today);
+        _calculator.CalculateInvoiceTotals(invoice);
+        return invoice;
+    }
+
+    private string GetCustomerName(int customerId)
+    {
+        return _customers.FirstOrDefault(c => c.Id == customerId)?.Name ?? "Unknown customer";
+    }
+
     private void SaveInvoice()
     {
         try
         {
-            var invoice = BuildInvoiceFromForm();
-            invoice.StorageDays = StorageDaysCalculator.ComputeBillableDays(invoice.DateIn ?? DateTime.Today, invoice.DateOut ?? DateTime.Today);
-            _calculator.CalculateInvoiceTotals(invoice);
+            var invoice = BuildPreparedInvoice();
             _invoiceRepository.Save(invoice);
             MessageBox.Show(this, _invoiceId.HasValue ? "Invoice updated." : "Invoice saved.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
             Close();

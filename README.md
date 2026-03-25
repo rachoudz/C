@@ -15,7 +15,8 @@ This repo now includes:
 - invoice load/edit flow
 - save invoice to SQLite
 - basic invoice search on the list screen
-- preview/export skeleton for printable invoice text
+- TXT preview export
+- PDF export support
 - Windows publish instructions
 
 ## Stack
@@ -23,6 +24,7 @@ This repo now includes:
 - .NET 8
 - WinForms
 - SQLite (`Microsoft.Data.Sqlite`)
+- QuestPDF for PDF generation
 
 ## Project structure
 
@@ -55,6 +57,7 @@ This repo now includes:
 - edit existing invoice by double-clicking a row or using the edit button
 - quick search by invoice number, customer, or status
 - preview/export button that writes a printable text version of the invoice
+- PDF export button for invoice documents
 
 ## How it works
 
@@ -85,6 +88,11 @@ dotnet run
 
 ## Publishing
 See `docs/WINDOWS_PUBLISH.md` for Windows build and publish commands.
+
+## Export
+- TXT preview export works as a simple printable fallback
+- PDF export is wired through QuestPDF
+- do a real `dotnet restore && dotnet build` on Windows to verify package restore and runtime behavior
 
 ## Next recommended steps
 - replace text preview export with real PDF generation

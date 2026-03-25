@@ -10,6 +10,8 @@ dotnet restore
 dotnet build -c Release
 ```
 
+This is especially important now because PDF export depends on the `QuestPDF` NuGet package.
+
 ## Run locally
 ```bash
 dotnet run
