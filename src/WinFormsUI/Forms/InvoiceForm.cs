@@ -10,6 +10,7 @@ public class InvoiceForm : Form
     private readonly ProductRepository _productRepository;
     private readonly InvoiceRepository _invoiceRepository;
     private readonly InvoiceCalculator _calculator = new();
+    private readonly InvoicePrintDocumentBuilder _printBuilder = new();
     private readonly int? _invoiceId;
 
     private readonly TextBox _invoiceNumberTextBox = new() { Left = 20, Top = 20, Width = 180 };
@@ -19,13 +20,14 @@ public class InvoiceForm : Form
     private readonly DateTimePicker _dateOutPicker = new() { Left = 190, Top = 70, Width = 150 };
     private readonly NumericUpDown _dailyRateInput = new() { Left = 360, Top = 70, Width = 120, DecimalPlaces = 0, Maximum = 100000000 };
     private readonly Label _storageDaysLabel = new() { Left = 500, Top = 74, Width = 180, Text = "Storage Days: 0" };
-    private readonly DataGridView _itemsGrid = new() { Left = 20, Top = 120, Width = 840, Height = 260, AllowUserToAddRows = false, AutoGenerateColumns = false };
+    private readonly DataGridView _itemsGrid = new() { Left = 20, Top = 120, Width = 840, Height = 260, AllowUserToAddRows = false, AutoGenerateColumns = false, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
     private readonly Label _subtotalLabel = new() { Left = 620, Top = 400, Width = 240, Text = "Subtotal: 0" };
     private readonly Label _taxLabel = new() { Left = 620, Top = 425, Width = 240, Text = "Tax: 0" };
     private readonly Label _grandTotalLabel = new() { Left = 620, Top = 450, Width = 240, Text = "Grand Total: 0" };
     private readonly Button _saveButton = new() { Left = 20, Top = 500, Width = 120, Height = 35, Text = "Save" };
     private readonly Button _recalculateButton = new() { Left = 150, Top = 500, Width = 120, Height = 35, Text = "Recalculate" };
     private readonly Button _addStorageRowButton = new() { Left = 280, Top = 500, Width = 150, Height = 35, Text = "Add Storage Line" };
+    private readonly Button _previewButton = new() { Left = 440, Top = 500, Width = 140, Height = 35, Text = "Preview / Export" };
 
     private List<Customer> _customers = new();
     private List<Product> _products = new();
@@ -42,6 +44,7 @@ public class InvoiceForm : Form
         Text = invoiceId.HasValue ? "Edit Invoice" : "New Invoice";
         Width = 900;
         Height = 620;
+        MinimumSize = new Size(920, 660);
         StartPosition = FormStartPosition.CenterParent;
 
         Controls.AddRange(new Control[]
@@ -65,7 +68,8 @@ public class InvoiceForm : Form
             _grandTotalLabel,
             _saveButton,
             _recalculateButton,
-            _addStorageRowButton
+            _addStorageRowButton,
+            _previewButton
         });
 
         BuildGrid();
@@ -74,6 +78,7 @@ public class InvoiceForm : Form
         _recalculateButton.Click += (_, _) => Recalculate();
         _saveButton.Click += (_, _) => SaveInvoice();
         _addStorageRowButton.Click += (_, _) => AddStorageRow();
+        _previewButton.Click += (_, _) => PreviewInvoice();
         _dateInPicker.ValueChanged += (_, _) => Recalculate();
         _dateOutPicker.ValueChanged += (_, _) => Recalculate();
         _dailyRateInput.ValueChanged += (_, _) => Recalculate();
@@ -275,6 +280,36 @@ public class InvoiceForm : Form
         }
 
         return invoice;
+    }
+
+    private void PreviewInvoice()
+    {
+        try
+        {
+            var invoice = BuildInvoiceFromForm();
+            invoice.StorageDays = StorageDaysCalculator.ComputeBillableDays(invoice.DateIn ?? DateTime.Today, invoice.DateOut ?? DateTime.Today);
+            _calculator.CalculateInvoiceTotals(invoice);
+
+            var customerName = _customers.FirstOrDefault(c => c.Id == invoice.CustomerId)?.Name ?? "Unknown customer";
+            var previewText = _printBuilder.BuildPlainText(invoice, customerName);
+
+            using var dialog = new SaveFileDialog
+            {
+                Title = "Export invoice preview",
+                Filter = "Text file (*.txt)|*.txt",
+                FileName = $"{invoice.InvoiceNumber}-preview.txt"
+            };
+
+            if (dialog.ShowDialog(this) == DialogResult.OK)
+            {
+                File.WriteAllText(dialog.FileName, previewText);
+                MessageBox.Show(this, "Preview exported. PDF generation can be plugged in next.", "Export complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Preview failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     private void SaveInvoice()

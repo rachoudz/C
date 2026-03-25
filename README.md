@@ -15,6 +15,8 @@ This repo now includes:
 - invoice load/edit flow
 - save invoice to SQLite
 - basic invoice search on the list screen
+- preview/export skeleton for printable invoice text
+- Windows publish instructions
 
 ## Stack
 
@@ -52,6 +54,7 @@ This repo now includes:
 - new invoice form
 - edit existing invoice by double-clicking a row or using the edit button
 - quick search by invoice number, customer, or status
+- preview/export button that writes a printable text version of the invoice
 
 ## How it works
 
@@ -80,8 +83,11 @@ dotnet run
 - this environment did not have `dotnet` installed, so compile verification could not be completed here
 - the app is structured for further work such as PDF export and packaging
 
+## Publishing
+See `docs/WINDOWS_PUBLISH.md` for Windows build and publish commands.
+
 ## Next recommended steps
-- print/PDF export
+- replace text preview export with real PDF generation
 - stronger validation and error messages
 - better customer/product management screens
 - packaging/publish for Windows `.exe`
