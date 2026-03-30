@@ -16,7 +16,8 @@ public class InvoiceForm : Form
 
     private readonly TextBox _invoiceNumberTextBox = new() { Left = 20, Top = 20, Width = 180 };
     private readonly DateTimePicker _issueDatePicker = new() { Left = 220, Top = 20, Width = 150 };
-    private readonly ComboBox _customerComboBox = new() { Left = 390, Top = 20, Width = 250, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _customerComboBox = new() { Left = 390, Top = 20, Width = 190, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly Button _addCustomerButton = new() { Left = 590, Top = 18, Width = 90, Height = 28, Text = "New Client" };
     private readonly DateTimePicker _dateInPicker = new() { Left = 20, Top = 70, Width = 150 };
     private readonly DateTimePicker _dateOutPicker = new() { Left = 190, Top = 70, Width = 150 };
     private readonly NumericUpDown _dailyRateInput = new() { Left = 360, Top = 70, Width = 120, DecimalPlaces = 0, Maximum = 100000000 };
@@ -27,9 +28,10 @@ public class InvoiceForm : Form
     private readonly Label _grandTotalLabel = new() { Left = 620, Top = 450, Width = 240, Text = "Grand Total: 0" };
     private readonly Button _saveButton = new() { Left = 20, Top = 500, Width = 120, Height = 35, Text = "Save" };
     private readonly Button _recalculateButton = new() { Left = 150, Top = 500, Width = 120, Height = 35, Text = "Recalculate" };
-    private readonly Button _addStorageRowButton = new() { Left = 280, Top = 500, Width = 150, Height = 35, Text = "Add Storage Line" };
-    private readonly Button _previewButton = new() { Left = 440, Top = 500, Width = 140, Height = 35, Text = "Preview TXT" };
-    private readonly Button _exportPdfButton = new() { Left = 590, Top = 500, Width = 140, Height = 35, Text = "Export PDF" };
+    private readonly Button _addItemButton = new() { Left = 280, Top = 500, Width = 120, Height = 35, Text = "Add Item" };
+    private readonly Button _addStorageRowButton = new() { Left = 410, Top = 500, Width = 150, Height = 35, Text = "Add Storage Line" };
+    private readonly Button _previewButton = new() { Left = 570, Top = 500, Width = 140, Height = 35, Text = "Preview TXT" };
+    private readonly Button _exportPdfButton = new() { Left = 720, Top = 500, Width = 140, Height = 35, Text = "Export PDF" };
 
     private List<Customer> _customers = new();
     private List<Product> _products = new();
@@ -57,6 +59,7 @@ public class InvoiceForm : Form
             _issueDatePicker,
             new Label { Left = 390, Top = 2, Text = "Customer" },
             _customerComboBox,
+            _addCustomerButton,
             new Label { Left = 20, Top = 52, Text = "Date In" },
             _dateInPicker,
             new Label { Left = 190, Top = 52, Text = "Date Out" },
@@ -70,6 +73,7 @@ public class InvoiceForm : Form
             _grandTotalLabel,
             _saveButton,
             _recalculateButton,
+            _addItemButton,
             _addStorageRowButton,
             _previewButton,
             _exportPdfButton
@@ -80,7 +84,9 @@ public class InvoiceForm : Form
         Load += (_, _) => InitializeForm();
         _recalculateButton.Click += (_, _) => Recalculate();
         _saveButton.Click += (_, _) => SaveInvoice();
+        _addItemButton.Click += (_, _) => AddManualItemRow();
         _addStorageRowButton.Click += (_, _) => AddStorageRow();
+        _addCustomerButton.Click += (_, _) => AddCustomer();
         _previewButton.Click += (_, _) => PreviewInvoice();
         _exportPdfButton.Click += (_, _) => ExportPdf();
         _dateInPicker.ValueChanged += (_, _) => Recalculate();
@@ -191,13 +197,20 @@ public class InvoiceForm : Form
     private void AddStorageRow()
     {
         var storageProduct = _products.FirstOrDefault(p => p.PricingRuleType == PricingRuleType.StorageDaily);
-        if (storageProduct is null) return;
+        if (storageProduct is null)
+        {
+            MessageBox.Show(this, "No storage product is configured yet.", "Missing product", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
 
         foreach (DataGridViewRow row in _itemsGrid.Rows)
         {
             var typeText = row.Cells[5].Value?.ToString() ?? string.Empty;
             if (typeText.Contains(nameof(PricingRuleType.StorageDaily), StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show(this, "This invoice already has a storage line. Use Add Item for extra manual lines.", "Storage line exists", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
+            }
         }
 
         _dailyRateInput.Value = storageProduct.DefaultUnitPriceMinor;
@@ -210,6 +223,52 @@ public class InvoiceForm : Form
             PricingRuleType.StorageDaily,
             0,
             0);
+    }
+
+    private void AddManualItemRow()
+    {
+        var fixedProduct = _products.FirstOrDefault(p => p.PricingRuleType == PricingRuleType.FixedPrice);
+
+        _itemsGrid.Rows.Add(
+            fixedProduct?.Name ?? "New item",
+            1,
+            fixedProduct?.UnitName ?? "pcs",
+            fixedProduct?.DefaultUnitPriceMinor ?? 0,
+            fixedProduct?.TaxRate ?? 0m,
+            PricingRuleType.FixedPrice,
+            0,
+            0);
+
+        var newRowIndex = _itemsGrid.Rows.Count - 1;
+        if (newRowIndex >= 0)
+        {
+            _itemsGrid.CurrentCell = _itemsGrid.Rows[newRowIndex].Cells[0];
+            _itemsGrid.BeginEdit(true);
+        }
+    }
+
+    private void AddCustomer()
+    {
+        using var dialog = new AddCustomerForm();
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        var customer = new Customer
+        {
+            Name = dialog.CustomerName.Trim(),
+            Phone = string.IsNullOrWhiteSpace(dialog.Phone) ? null : dialog.Phone.Trim(),
+            Email = string.IsNullOrWhiteSpace(dialog.Email) ? null : dialog.Email.Trim(),
+            Country = string.IsNullOrWhiteSpace(dialog.Country) ? "Algeria" : dialog.Country.Trim(),
+            IsActive = true
+        };
+
+        var customerId = _customerRepository.Save(customer);
+        _customers = _customerRepository.GetAll();
+        _customerComboBox.DataSource = null;
+        _customerComboBox.DataSource = _customers;
+        _customerComboBox.DisplayMember = nameof(Customer.Name);
+        _customerComboBox.ValueMember = nameof(Customer.Id);
+        _customerComboBox.SelectedValue = customerId;
     }
 
     private void Recalculate()
@@ -364,6 +423,59 @@ public class InvoiceForm : Form
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, "Save failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private sealed class AddCustomerForm : Form
+    {
+        private readonly TextBox _nameTextBox = new() { Left = 120, Top = 20, Width = 220 };
+        private readonly TextBox _phoneTextBox = new() { Left = 120, Top = 55, Width = 220 };
+        private readonly TextBox _emailTextBox = new() { Left = 120, Top = 90, Width = 220 };
+        private readonly TextBox _countryTextBox = new() { Left = 120, Top = 125, Width = 220, Text = "Algeria" };
+
+        public string CustomerName => _nameTextBox.Text;
+        public string Phone => _phoneTextBox.Text;
+        public string Email => _emailTextBox.Text;
+        public string Country => _countryTextBox.Text;
+
+        public AddCustomerForm()
+        {
+            Text = "New Client";
+            Width = 390;
+            Height = 240;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            StartPosition = FormStartPosition.CenterParent;
+
+            var saveButton = new Button { Text = "Save", Left = 120, Top = 165, Width = 100, DialogResult = DialogResult.OK };
+            var cancelButton = new Button { Text = "Cancel", Left = 240, Top = 165, Width = 100, DialogResult = DialogResult.Cancel };
+
+            saveButton.Click += (_, _) =>
+            {
+                if (string.IsNullOrWhiteSpace(_nameTextBox.Text))
+                {
+                    MessageBox.Show(this, "Please enter the client name.", "Missing name", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    DialogResult = DialogResult.None;
+                }
+            };
+
+            Controls.AddRange(new Control[]
+            {
+                new Label { Left = 20, Top = 24, Width = 90, Text = "Client Name" },
+                _nameTextBox,
+                new Label { Left = 20, Top = 59, Width = 90, Text = "Phone" },
+                _phoneTextBox,
+                new Label { Left = 20, Top = 94, Width = 90, Text = "Email" },
+                _emailTextBox,
+                new Label { Left = 20, Top = 129, Width = 90, Text = "Country" },
+                _countryTextBox,
+                saveButton,
+                cancelButton
+            });
+
+            AcceptButton = saveButton;
+            CancelButton = cancelButton;
         }
     }
 }
